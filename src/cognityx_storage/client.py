@@ -1,0 +1,110 @@
+"""Application-facing storage client with shared and user scopes."""
+
+from __future__ import annotations
+
+import io
+import json
+from pathlib import Path
+from typing import Any, BinaryIO
+
+from cognityx_storage.backend import StorageBackend
+from cognityx_storage.exceptions import InvalidStorageKeyError
+from cognityx_storage.local import LocalStorageBackend, validate_storage_key
+from cognityx_storage.models import StoredObject
+
+
+class StorageClient:
+    """Expose logical storage operations without revealing backend layout."""
+
+    def __init__(
+        self,
+        backend: StorageBackend | None = None,
+        *,
+        scope: str = "",
+    ) -> None:
+        self._backend = backend or LocalStorageBackend()
+        self._scope = validate_storage_key(scope, allow_empty=True)
+
+    def for_shared_data(self) -> "StorageClient":
+        """Return a client restricted to the shared namespace."""
+        return StorageClient(self._backend, scope="shared")
+
+    def for_user(self, user_id: str) -> "StorageClient":
+        """Return a client restricted to one user's namespace."""
+        segment = validate_storage_key(user_id)
+        if "/" in segment:
+            raise InvalidStorageKeyError("User identifiers must be one path segment.")
+        return StorageClient(self._backend, scope=f"users/{segment}")
+
+    def put_bytes(
+        self,
+        key: str,
+        content: bytes,
+        *,
+        media_type: str = "application/octet-stream",
+    ) -> StoredObject:
+        """Publish an in-memory byte string."""
+        return self.put_stream(key, io.BytesIO(content), media_type=media_type)
+
+    def put_json(self, key: str, value: Any) -> StoredObject:
+        """Serialize and publish a JSON value using UTF-8."""
+        content = (
+            json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+        ).encode("utf-8")
+        return self.put_bytes(key, content, media_type="application/json")
+
+    def put_stream(
+        self,
+        key: str,
+        source: BinaryIO,
+        *,
+        media_type: str = "application/octet-stream",
+    ) -> StoredObject:
+        """Publish a binary stream."""
+        return self._backend.put_stream(
+            self._scoped_key(key), source, media_type=media_type
+        )
+
+    def put_file(
+        self,
+        key: str,
+        source: str | Path,
+        *,
+        media_type: str | None = None,
+    ) -> StoredObject:
+        """Publish one local file."""
+        return self._backend.put_file(
+            self._scoped_key(key), source, media_type=media_type
+        )
+
+    def put_directory(self, key: str, source: str | Path) -> StoredObject:
+        """Publish a local directory tree."""
+        return self._backend.put_directory(self._scoped_key(key), source)
+
+    def open(self, key: str) -> BinaryIO:
+        """Open one stored file for binary reading."""
+        return self._backend.open_reader(self._scoped_key(key))
+
+    def materialize(self, key: str) -> Path:
+        """Return a local path for a stored file or directory."""
+        return self._backend.materialize(self._scoped_key(key))
+
+    def stat(self, key: str) -> StoredObject:
+        """Describe a stored file or directory."""
+        return self._backend.stat(self._scoped_key(key))
+
+    def exists(self, key: str) -> bool:
+        """Return whether a logical key exists in this client's scope."""
+        return self._backend.exists(self._scoped_key(key))
+
+    def list(self, prefix: str = "") -> tuple[StoredObject, ...]:
+        """List immediate children within this client's scope."""
+        return self._backend.list(self._scoped_key(prefix, allow_empty=True))
+
+    def _scoped_key(self, key: str, *, allow_empty: bool = False) -> str:
+        normalized = validate_storage_key(key, allow_empty=allow_empty)
+        if self._scope and normalized:
+            return f"{self._scope}/{normalized}"
+        if self._scope:
+            return self._scope
+        return normalized
