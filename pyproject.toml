@@ -13,7 +13,7 @@ authors = [{ name = "Cognityx" }]
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "mkdocs-material>=9.5"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/cognityx_storage"]
@@ -21,4 +21,3 @@ packages = ["src/cognityx_storage"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
-
