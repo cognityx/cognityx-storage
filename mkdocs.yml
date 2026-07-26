@@ -14,6 +14,7 @@ markdown_extensions:
   - attr_list
   - pymdownx.superfences
 nav:
+  - Cognityx Home: https://cognityx.github.io/
   - Overview: index.md
   - Architecture: architecture.md
   - Development: development.md
