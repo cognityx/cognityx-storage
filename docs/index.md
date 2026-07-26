@@ -11,4 +11,3 @@ the same application-facing boundary while changing where bytes live.
 
 - [Architecture](architecture.md)
 - [Development](development.md)
-- [Repository README](https://github.com/cognityx/cognityx-storage)
