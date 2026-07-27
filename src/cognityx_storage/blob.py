@@ -181,19 +181,25 @@ class PreparedBlob:
 
     def publish(self, *, context: ResourceContext) -> BlobRef:
         """Publish the captured bytes once through the owning BlobStore."""
-        if not self._active:
-            raise RuntimeError("PreparedBlob is closed and cannot be published.")
         if self._published:
             raise RuntimeError("PreparedBlob has already been published.")
-        reference = self._blob_store._publish(
-            self._path,
-            digest=self.digest,
-            size_bytes=self.size_bytes,
-            media_type=self.media_type,
-            context=context,
-        )
-        self._published = True
-        return reference
+        if not self._active:
+            raise RuntimeError("PreparedBlob is closed and cannot be published.")
+        try:
+            reference = self._blob_store._publish(
+                self._path,
+                digest=self.digest,
+                size_bytes=self.size_bytes,
+                media_type=self.media_type,
+                context=context,
+            )
+        except BaseException:
+            self.close()
+            raise
+        else:
+            self._published = True
+            self.close()
+            return reference
 
     def close(self) -> None:
         """Discard the temporary snapshot if it is still active."""

@@ -195,13 +195,14 @@ def test_prepare_file_captures_once_and_publishes_exact_snapshot(
         assert prepared.media_type == "application/pdf"
         source.write_bytes(b"replacement")
         reference = prepared.publish(context=_context())
+        assert list(spool.iterdir()) == []
         with pytest.raises(RuntimeError, match="already been published"):
             prepared.publish(context=_context())
 
     assert list(spool.iterdir()) == []
     with runtime.open_blob(reference) as opened:
         assert opened.read() == captured
-    with pytest.raises(RuntimeError, match="closed"):
+    with pytest.raises(RuntimeError, match="already been published"):
         prepared.publish(context=_context())
 
 
@@ -270,11 +271,13 @@ def test_prepare_file_cleanup_on_publication_failure(
 
     monkeypatch.setattr(role_store, "put_file", fail_publication)
 
+    prepared = blobs.prepare_file(source)
     with pytest.raises(RuntimeError, match="publication failed"):
-        with blobs.prepare_file(source) as prepared:
-            prepared.publish(context=_context())
+        prepared.publish(context=_context())
 
     assert list(spool.iterdir()) == []
+    with pytest.raises(RuntimeError, match="closed"):
+        prepared.publish(context=_context())
 
 
 def test_put_file_staging_cleanup_on_success(
