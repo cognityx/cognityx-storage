@@ -129,6 +129,79 @@ def test_put_file_hashes_and_publishes_large_content_incrementally(
         assert opened.read() == content
 
 
+def test_put_file_publishes_captured_snapshot_when_source_mutates(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source = tmp_path / "report.pdf"
+    captured = b"captured snapshot"
+    replacement = b"caller changed the original"
+    source.write_bytes(captured)
+    runtime = _runtime(tmp_path / "storage")
+    blobs = runtime.blobs("source_asset")
+    original_publish = BlobStore._publish
+
+    def mutate_source_before_publish(self, staged_path, **kwargs):
+        source.write_bytes(replacement)
+        return original_publish(self, staged_path, **kwargs)
+
+    monkeypatch.setattr(BlobStore, "_publish", mutate_source_before_publish)
+
+    reference = blobs.put_file(source, context=_context())
+
+    with runtime.open_blob(reference) as opened:
+        stored = opened.read()
+    assert source.read_bytes() == replacement
+    assert stored == captured
+    assert sha256(stored).hexdigest() == reference.digest
+    assert len(stored) == reference.size_bytes
+
+
+def test_put_file_staging_cleanup_on_success(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "report.pdf"
+    source.write_bytes(b"content")
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    runtime = _runtime(tmp_path / "storage")
+    blobs = BlobStore(
+        runtime,
+        runtime.for_role("source_asset"),
+        spool_directory=spool,
+    )
+
+    blobs.put_file(source, context=_context())
+
+    assert list(spool.iterdir()) == []
+
+
+def test_put_file_staging_cleanup_on_publication_failure(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source = tmp_path / "report.pdf"
+    source.write_bytes(b"content")
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    runtime = _runtime(tmp_path / "storage")
+    role_store = runtime.for_role("source_asset")
+    blobs = BlobStore(
+        runtime,
+        role_store,
+        spool_directory=spool,
+    )
+
+    def fail_publication(*args, **kwargs):
+        raise RuntimeError("publication failed")
+
+    monkeypatch.setattr(role_store, "put_file", fail_publication)
+
+    with pytest.raises(RuntimeError, match="publication failed"):
+        blobs.put_file(source, context=_context())
+    assert list(spool.iterdir()) == []
+
+
 def test_tenants_are_physically_isolated(tmp_path: Path) -> None:
     blobs = _runtime(tmp_path).blobs("source_asset")
 

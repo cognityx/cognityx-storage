@@ -117,9 +117,12 @@ actually accepted the object. Later reads use the recorded `profile_name` and
 `storage_key`, even if the role now resolves elsewhere. Missing content never
 causes fallback-profile searching.
 
-Non-seekable input streams are copied to temporary storage while hashing, using
-bounded memory. Temporary content is cleaned after both successful and failed
-operations.
+File and stream inputs share one snapshot pipeline. Storage opens a caller file
+once, copies it to temporary storage while calculating SHA-256, and publishes
+that exact staged snapshot. Non-seekable streams use the same bounded-memory
+pipeline. This guarantees that the Blob digest and size describe the bytes
+actually published even if the caller's original file changes. Temporary
+content is cleaned after both successful and failed operations.
 
 ## Native paths
 

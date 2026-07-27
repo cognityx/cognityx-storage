@@ -67,8 +67,10 @@ blob = blobs.put_stream(
 )
 ```
 
-Streams do not need to support seeking. Storage copies and hashes them
-incrementally through a temporary file, then cleans that file after success or
+Files and streams are copied and hashed incrementally into one temporary
+snapshot. The exact staged bytes used to calculate the CAS address are then
+published, so later changes to a caller's file cannot alter the Blob. Streams
+do not need to support seeking. Staged content is cleaned after success or
 failure.
 
 ## Deduplication behavior

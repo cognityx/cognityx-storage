@@ -17,7 +17,6 @@ from cognityx_storage.cas import (
     build_cas_key,
     copy_and_hash_stream,
     derive_blob_id,
-    hash_file,
     hash_stream,
     resolve_dedup_domain,
     validate_sha256_digest,
@@ -143,19 +142,19 @@ class BlobStore:
         media_type: str | None = None,
     ) -> BlobRef:
         path = Path(source)
-        digest, size = hash_file(path)
+        if not path.is_file():
+            raise FileNotFoundError(f"Blob source file does not exist: {path}")
         selected_media_type = (
             media_type
             or mimetypes.guess_type(path.name)[0]
             or "application/octet-stream"
         )
-        return self._publish(
-            path,
-            digest=digest,
-            size_bytes=size,
-            media_type=selected_media_type,
-            context=context,
-        )
+        with path.open("rb") as source_stream:
+            return self._stage_stream_and_publish(
+                source_stream,
+                context=context,
+                media_type=selected_media_type,
+            )
 
     def put_stream(
         self,
@@ -163,6 +162,19 @@ class BlobStore:
         *,
         context: ResourceContext,
         media_type: str = "application/octet-stream",
+    ) -> BlobRef:
+        return self._stage_stream_and_publish(
+            source,
+            context=context,
+            media_type=media_type,
+        )
+
+    def _stage_stream_and_publish(
+        self,
+        source: BinaryIO,
+        *,
+        context: ResourceContext,
+        media_type: str,
     ) -> BlobRef:
         with tempfile.TemporaryDirectory(
             prefix="cognityx-blob-",
