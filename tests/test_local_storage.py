@@ -1,5 +1,6 @@
 from io import BytesIO
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -37,6 +38,23 @@ def test_duplicate_publication_is_rejected(tmp_path: Path) -> None:
         backend.put_stream("reports/result.json", BytesIO(b"replacement"))
 
     assert (tmp_path / "reports/result.json").read_bytes() == b"{}"
+
+
+def test_concurrent_immutable_publication_keeps_first_object(tmp_path: Path) -> None:
+    backend = LocalStorageBackend(tmp_path)
+
+    def publish(value: bytes) -> str:
+        try:
+            backend.put_stream("blobs/sha256/ab/cd/value", BytesIO(value))
+            return "created"
+        except ObjectAlreadyExistsError:
+            return "exists"
+
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        outcomes = list(workers.map(publish, (b"first", b"second")))
+
+    assert sorted(outcomes) == ["created", "exists"]
+    assert (tmp_path / "blobs/sha256/ab/cd/value").read_bytes() in {b"first", b"second"}
 
 
 def test_file_and_directory_publication(tmp_path: Path) -> None:

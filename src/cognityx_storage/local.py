@@ -115,8 +115,17 @@ class LocalStorageBackend:
                 shutil.copyfileobj(source, output)
                 output.flush()
                 os.fsync(output.fileno())
-            self._ensure_absent(destination, normalized)
-            temporary.replace(destination)
+            # ``Path.replace`` can overwrite another writer that published
+            # between the preflight check and this point.  Linking creates the
+            # destination atomically and fails when an immutable object won
+            # the race, preserving no-overwrite publication semantics.
+            try:
+                os.link(temporary, destination)
+            except FileExistsError as exc:
+                raise ObjectAlreadyExistsError(
+                    f"Storage object already exists: {normalized}"
+                ) from exc
+            temporary.unlink()
         except BaseException:
             temporary.unlink(missing_ok=True)
             raise
