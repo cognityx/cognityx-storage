@@ -42,6 +42,10 @@ class StorageBackend(Protocol):
         """Return a local path containing the requested content."""
         ...
 
+    def resolve_local_path(self, key: str) -> Path | None:
+        """Return an existing native path without materializing remote content."""
+        ...
+
     def stat(self, key: str) -> StoredObject:
         """Describe a stored file or directory."""
         ...

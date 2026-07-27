@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from cognityx_storage import LocalStorageBackend, StorageClient, UnsupportedOperationError
+from cognityx_storage import LocalStorageBackend, ObjectConsistencyError, StorageClient, UnsupportedOperationError
 
 
 def test_user_clients_are_isolated_by_logical_prefix(tmp_path: Path) -> None:
@@ -32,6 +32,24 @@ def test_shared_client_uses_shared_namespace(tmp_path: Path) -> None:
 
     assert stored.key == "shared/rag/document-1/chunks.jsonl"
     assert shared.materialize("rag/document-1/chunks.jsonl").is_file()
+
+
+def test_uri_idempotent_json_and_read_only_local_path(tmp_path: Path) -> None:
+    shared = StorageClient(LocalStorageBackend(tmp_path)).for_shared_data()
+    shared.put_json_idempotent("source-contexts/ctx/context.json", {"id": "ctx"})
+    shared.put_json_idempotent("source-contexts/ctx/context.json", {"id": "ctx"})
+
+    assert shared.uri("source-contexts/ctx/context.json") == "storage://shared/source-contexts/ctx/context.json"
+    assert shared.resolve_local_path("source-contexts/ctx/context.json") == tmp_path / "shared/source-contexts/ctx/context.json"
+    with pytest.raises(ObjectConsistencyError):
+        shared.put_json_idempotent("source-contexts/ctx/context.json", {"id": "other"})
+
+
+def test_non_local_backend_reports_no_native_path() -> None:
+    class RemoteBackend:
+        pass
+
+    assert StorageClient(RemoteBackend()).resolve_local_path("remote/object") is None
 
 
 def test_client_lists_only_its_scope(tmp_path: Path) -> None:

@@ -17,6 +17,9 @@ class ObjectAlreadyExistsError(StorageError, FileExistsError):
     """Publication would replace an existing object."""
 
 
+class ObjectConsistencyError(StorageError):
+    """An immutable object exists with content different from the required value."""
+
+
 class UnsupportedOperationError(StorageError):
     """The selected backend cannot perform the requested operation."""
-

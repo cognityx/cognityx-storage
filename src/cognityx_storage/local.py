@@ -186,6 +186,10 @@ class LocalStorageBackend:
     def materialize(self, key: str) -> Path:
         return self._existing_path(key)
 
+    def resolve_local_path(self, key: str) -> Path | None:
+        """Return the existing local object path without any materialization."""
+        return self._existing_path(key)
+
     def stat(self, key: str) -> StoredObject:
         normalized = validate_storage_key(key)
         return self._describe(self._existing_path(normalized), normalized)

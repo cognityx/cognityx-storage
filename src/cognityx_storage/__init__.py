@@ -5,6 +5,7 @@ from cognityx_storage.client import StorageClient
 from cognityx_storage.exceptions import (
     InvalidStorageKeyError,
     ObjectAlreadyExistsError,
+    ObjectConsistencyError,
     ObjectNotFoundError,
     StorageError,
     UnsupportedOperationError,
@@ -20,6 +21,7 @@ __all__ = [
     "InvalidStorageKeyError",
     "LocalStorageBackend",
     "ObjectAlreadyExistsError",
+    "ObjectConsistencyError",
     "ObjectNotFoundError",
     "StorageBackend",
     "StorageClient",
@@ -27,4 +29,3 @@ __all__ = [
     "StoredObject",
     "UnsupportedOperationError",
 ]
-

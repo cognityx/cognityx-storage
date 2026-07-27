@@ -8,7 +8,11 @@ from pathlib import Path
 from typing import Any, BinaryIO
 
 from cognityx_storage.backend import StorageBackend
-from cognityx_storage.exceptions import InvalidStorageKeyError
+from cognityx_storage.exceptions import (
+    InvalidStorageKeyError,
+    ObjectAlreadyExistsError,
+    ObjectConsistencyError,
+)
 from cognityx_storage.local import LocalStorageBackend, validate_storage_key
 from cognityx_storage.models import StoredObject
 
@@ -53,6 +57,21 @@ class StorageClient:
         ).encode("utf-8")
         return self.put_bytes(key, content, media_type="application/json")
 
+    def put_json_idempotent(self, key: str, value: Any) -> StoredObject:
+        """Publish immutable JSON, accepting only an identical existing value."""
+        content = (
+            json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+        ).encode("utf-8")
+        try:
+            return self.put_bytes(key, content, media_type="application/json")
+        except ObjectAlreadyExistsError:
+            with self.open(key) as existing:
+                if existing.read() != content:
+                    raise ObjectConsistencyError(
+                        f"Immutable JSON object conflicts with requested value: {key}"
+                    ) from None
+            return self.stat(key)
+
     def put_stream(
         self,
         key: str,
@@ -88,6 +107,22 @@ class StorageClient:
     def materialize(self, key: str) -> Path:
         """Return a local path for a stored file or directory."""
         return self._backend.materialize(self._scoped_key(key))
+
+    def resolve_local_path(self, key: str) -> Path | None:
+        """Return an existing native path without downloading or materializing."""
+        resolver = getattr(self._backend, "resolve_local_path", None)
+        if resolver is None:
+            return None
+        return resolver(self._scoped_key(key))
+
+    def uri(self, key: str) -> str:
+        """Return the provider-neutral Cognityx URI for a scoped logical key."""
+        return f"storage://{self._scoped_key(key)}"
+
+    @property
+    def backend_name(self) -> str:
+        """Backend identity for diagnostics without exposing backend internals."""
+        return type(self._backend).__name__
 
     def stat(self, key: str) -> StoredObject:
         """Describe a stored file or directory."""
