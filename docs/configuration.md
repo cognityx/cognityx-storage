@@ -29,6 +29,9 @@ Zero-config creates the `local-main` filesystem profile using
 | `cache` | `cache` |
 | `temporary` | `temporary` |
 
+Built-in roles use tenant Blob deduplication except `temporary`, which uses
+`none`.
+
 ## Enterprise-style example
 
 Only filesystem profiles are executable today. Object and HDFS profiles below
@@ -71,6 +74,7 @@ preferred_capabilities = [
 profile = "primary-object"
 fallback_profiles = ["local-main"]
 namespace = "source-assets"
+dedup_scope = "tenant"
 preferred_capabilities = [
   "stream_read",
   "stream_write",
@@ -87,6 +91,7 @@ namespace = "artifacts"
 profile = "enterprise-hdfs"
 fallback_profiles = ["primary-object", "local-main"]
 namespace = "datasets"
+dedup_scope = "tenant"
 preferred_capabilities = [
   "stream_read",
   "stream_write",
@@ -106,6 +111,7 @@ namespace = "cache"
 [storage.roles.temporary]
 profile = "local-main"
 namespace = "temporary"
+dedup_scope = "none"
 ```
 
 `credentials_ref` remains opaque. This release does not load credentials or
@@ -128,3 +134,8 @@ print(config.describe())
 Malformed structure, unknown references, unsafe namespaces, missing filesystem
 roots, and unknown capability names are errors. Provider unavailability and
 preferred capability mismatches are warnings.
+
+`dedup_scope` accepts only `tenant`, `context`, `platform`, or `none`.
+Omitting it selects `tenant`. Platform-wide reuse must therefore be explicit.
+Storage does not read `COGNITYX_DEDUP_SCOPE`; that variable remains part of the
+current Ingest compatibility implementation until its later migration.

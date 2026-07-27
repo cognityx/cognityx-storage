@@ -32,6 +32,7 @@ _DEFAULT_ROLE_NAMESPACES = {
     "cache": "cache",
     "temporary": "temporary",
 }
+_DEDUP_SCOPES = frozenset({"none", "context", "tenant", "platform"})
 _SECRET_MARKERS = ("credential", "secret", "password", "token")
 
 
@@ -96,6 +97,7 @@ class StorageRole:
     fallback_profiles: tuple[str, ...] = ()
     namespace: str = ""
     preferred_capabilities: tuple[str, ...] = ()
+    dedup_scope: str = "tenant"
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,6 +203,7 @@ class StorageConfig:
                 name=name,
                 profile="local-main",
                 namespace=namespace,
+                dedup_scope="none" if name == "temporary" else "tenant",
             )
             for name, namespace in _DEFAULT_ROLE_NAMESPACES.items()
         }
@@ -263,6 +266,7 @@ class StorageConfig:
             fallbacks = raw_role.get("fallback_profiles", [])
             preferred = raw_role.get("preferred_capabilities", [])
             namespace = raw_role.get("namespace", "")
+            dedup_scope = raw_role.get("dedup_scope", "tenant")
             if profile is not None and not isinstance(profile, str):
                 raise StorageConfigurationError(
                     f"Storage role '{role_name}' profile must be a string."
@@ -283,12 +287,17 @@ class StorageConfig:
                 raise StorageConfigurationError(
                     f"Storage role '{role_name}' namespace must be a string."
                 )
+            if not isinstance(dedup_scope, str):
+                raise StorageConfigurationError(
+                    f"Storage role '{role_name}' dedup_scope must be a string."
+                )
             roles[role_name] = StorageRole(
                 name=role_name,
                 profile=profile,
                 fallback_profiles=tuple(fallbacks),
                 namespace=namespace,
                 preferred_capabilities=tuple(preferred),
+                dedup_scope=dedup_scope,
             )
 
         return cls(
@@ -410,6 +419,17 @@ class StorageConfig:
             unknown_capabilities = sorted(
                 set(role.preferred_capabilities) - capability_names
             )
+            if role.dedup_scope not in _DEDUP_SCOPES:
+                issues.append(
+                    StorageValidationIssue(
+                        "error",
+                        "invalid_dedup_scope",
+                        f"Storage role '{role.name}' has invalid dedup_scope "
+                        f"'{role.dedup_scope}'. Expected one of: "
+                        f"{', '.join(sorted(_DEDUP_SCOPES))}.",
+                        role_name=role.name,
+                    )
+                )
             for capability in unknown_capabilities:
                 issues.append(
                     StorageValidationIssue(
@@ -491,6 +511,7 @@ class StorageConfig:
                     "fallback_profiles": list(role.fallback_profiles),
                     "namespace": role.namespace,
                     "preferred_capabilities": list(role.preferred_capabilities),
+                    "dedup_scope": role.dedup_scope,
                 }
                 for role in self.roles.values()
             ],

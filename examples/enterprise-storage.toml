@@ -26,6 +26,7 @@ preferred_capabilities = ["native_path", "random_write", "file_locking"]
 profile = "primary-object"
 fallback_profiles = ["local-main"]
 namespace = "source-assets"
+dedup_scope = "tenant"
 preferred_capabilities = [
   "stream_read",
   "stream_write",
@@ -37,6 +38,7 @@ preferred_capabilities = [
 profile = "enterprise-hdfs"
 fallback_profiles = ["primary-object", "local-main"]
 namespace = "datasets"
+dedup_scope = "tenant"
 preferred_capabilities = [
   "stream_read",
   "stream_write",

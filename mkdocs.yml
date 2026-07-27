@@ -17,6 +17,7 @@ nav:
   - Cognityx Home: https://cognityx.github.io/
   - Overview: index.md
   - Concepts: concepts.md
+  - Blobs and CAS: blobs.md
   - Configuration: configuration.md
   - Architecture: architecture.md
   - Development: development.md

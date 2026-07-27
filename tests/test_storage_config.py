@@ -56,6 +56,8 @@ def test_zero_config_has_local_profile_and_standard_roles(
         "cache",
         "temporary",
     }
+    assert config.roles["source_asset"].dedup_scope == "tenant"
+    assert config.roles["temporary"].dedup_scope == "none"
     assert config.validate().is_valid
 
 
@@ -147,6 +149,7 @@ def test_validation_reports_structural_errors_and_nonfatal_warnings() -> None:
                         "fallback_profiles": ["missing"],
                         "namespace": "../unsafe",
                         "preferred_capabilities": ["not_real"],
+                        "dedup_scope": "global",
                     }
                 },
             }
@@ -161,6 +164,7 @@ def test_validation_reports_structural_errors_and_nonfatal_warnings() -> None:
         "unknown_role_profile",
         "invalid_role_namespace",
         "unknown_capability",
+        "invalid_dedup_scope",
     } <= codes
     assert any(
         issue.code == "provider_unavailable" for issue in report.warnings

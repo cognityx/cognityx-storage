@@ -7,11 +7,13 @@ from pathlib import Path
 from typing import Any, BinaryIO
 
 from cognityx_storage.backend import StorageBackend
+from cognityx_storage.blob import BlobRef, BlobStore
 from cognityx_storage.capabilities import StorageCapabilities
 from cognityx_storage.client import StorageClient
 from cognityx_storage.config import StorageConfig, StorageProfile, StorageRole
 from cognityx_storage.exceptions import (
     StorageConfigurationError,
+    StorageProviderUnavailableError,
     StorageRoleNotFoundError,
     StorageRoleUnavailableError,
 )
@@ -43,6 +45,7 @@ class StorageRoleResolution:
             "fallback_profiles": list(self.role.fallback_profiles),
             "profiles_tried": list(self.profiles_tried),
             "namespace": self.role.namespace,
+            "dedup_scope": self.role.dedup_scope,
             "reason": self.reason,
             "warnings": list(self.warnings),
             "capabilities": self.capabilities.to_dict(),
@@ -315,6 +318,26 @@ class StorageRuntime:
             self._backends[profile.name] = backend
         return ResolvedRoleStore(resolution, backend)
 
+    def blobs(self, role_name: str) -> BlobStore:
+        """Return immutable Blob/CAS operations bound to a configured role."""
+        store = self.for_role(role_name)
+        role = self.config.roles[role_name]
+        return BlobStore(self, store, dedup_scope=role.dedup_scope)
+
+    def open_blob(self, blob_ref: BlobRef) -> BinaryIO:
+        """Open a durable BlobRef through the profile recorded at creation."""
+        return self._client_for_blob(blob_ref).open(blob_ref.storage_key)
+
+    def blob_exists(self, blob_ref: BlobRef) -> bool:
+        """Check a durable BlobRef without re-resolving its current role."""
+        return self._client_for_blob(blob_ref).exists(blob_ref.storage_key)
+
+    def resolve_blob_local_path(self, blob_ref: BlobRef) -> Path | None:
+        """Resolve an existing Blob through its recorded profile identity."""
+        return self._client_for_blob(blob_ref).resolve_local_path(
+            blob_ref.storage_key
+        )
+
     def describe(self) -> dict[str, Any]:
         configuration = self.config.describe(factory=self._factory)
         roles: list[dict[str, Any]] = []
@@ -329,6 +352,7 @@ class StorageRuntime:
                         "resolved_profile": None,
                         "fallback_profiles": list(role.fallback_profiles),
                         "namespace": role.namespace,
+                        "dedup_scope": role.dedup_scope,
                         "reason": str(exc),
                         "warnings": [str(exc)],
                         "capabilities": None,
@@ -336,3 +360,19 @@ class StorageRuntime:
                 )
         configuration["resolved_roles"] = roles
         return configuration
+
+    def _client_for_blob(self, blob_ref: BlobRef) -> StorageClient:
+        profile = self.config.profiles.get(blob_ref.profile_name)
+        if profile is None:
+            raise StorageProviderUnavailableError(
+                f"Blob profile is not configured: {blob_ref.profile_name}"
+            )
+        if not self._factory.is_available(profile.type):
+            raise StorageProviderUnavailableError(
+                f"Blob profile '{profile.name}' provider implementation is unavailable."
+            )
+        backend = self._backends.get(profile.name)
+        if backend is None:
+            backend = self._factory.build(profile)
+            self._backends[profile.name] = backend
+        return StorageClient(backend)

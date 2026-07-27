@@ -71,6 +71,56 @@ The existing low-level `StorageClient.uri()` deliberately remains
 `storage://<scope>/<logical-key>`. Ingest still relies on that form. Migration
 to role-based URIs will be explicit in a later job.
 
+## Blob and CAS flow
+
+```text
+ResourceContext
+    ↓
+role dedup_scope
+    ↓
+non-identifying dedup domain
+    ↓
+incremental SHA-256
+    ↓
+immutable CAS publication
+    ↓
+BlobRef
+```
+
+The role-relative CAS key is:
+
+```text
+blob-domains/<domain>/sha256/<first-2>/<next-2>/<full-digest>
+```
+
+The resolved role namespace is prepended exactly once. `blob_id` is derived
+from the stable profile name and full logical storage key. Provider technology,
+filename, media type, project, workspace, and caller resource identifiers do
+not participate in physical Blob identity.
+
+Tenant, principal, Context, and system domains use SHA-derived tokens rather
+than raw governance names. A `none` policy creates a unique `instance-...`
+domain for each write.
+
+There is no central Blob registry. The CAS object provides physical identity,
+and the calling domain service persists the returned `BlobRef`.
+
+Concurrent writers rely on backend no-overwrite publication. A losing writer
+verifies the winning immutable object's size and digest before returning an
+equivalent reference. Inconsistent existing content raises
+`ObjectConsistencyError` and is never overwritten.
+
+## Durable Blob reads
+
+Blob creation follows current role routing and records the profile that
+actually accepted the object. Later reads use the recorded `profile_name` and
+`storage_key`, even if the role now resolves elsewhere. Missing content never
+causes fallback-profile searching.
+
+Non-seekable input streams are copied to temporary storage while hashing, using
+bounded memory. Temporary content is cleaned after both successful and failed
+operations.
+
 ## Native paths
 
 `native_path(key)` returns the safe filesystem target for a role and key,

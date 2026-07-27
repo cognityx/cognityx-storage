@@ -60,3 +60,18 @@ datasets = storage.for_role("dataset")
 Normal code continues to use familiar operations such as `put_file`, `open`,
 `exists`, `stat`, and `list`. Diagnostics are available through
 `storage.describe()` and properties on the resolved role store.
+
+## Blob
+
+A Blob is immutable stored content. `BlobStore` hashes content, derives its
+deduplication domain, publishes it at a content-addressed key, and returns a
+durable `BlobRef`.
+
+Blob storage is obtained from the runtime:
+
+```python
+blobs = storage.blobs("source_asset")
+```
+
+Blob/CAS is a reusable byte-storage capability. It does not define domain
+objects such as SourceAsset, DatasetRevision, Checkpoint, or ModelArtifact.

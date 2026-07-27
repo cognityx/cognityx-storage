@@ -39,6 +39,21 @@ Inspect routing without exposing provider secrets:
 report = storage.describe()
 ```
 
+Immutable content-addressed Blobs use the same runtime:
+
+```python
+from cognityx_resource import ResourceContext
+
+context = ResourceContext(tenant_id="acme", principal_id="alice")
+blob = storage.blobs("source_asset").put_file(
+    "/tmp/report.pdf",
+    context=context,
+)
+
+with storage.open_blob(blob) as source:
+    content = source.read()
+```
+
 ## Profiles and roles
 
 A profile describes where and how storage exists. A role describes what a
@@ -49,8 +64,9 @@ Only the filesystem provider performs I/O today. Object and HDFS profiles may
 be configured for forward-compatible deployment plans, but they are reported
 as unavailable and require an available fallback.
 
-See [Storage concepts](docs/concepts.md), [configuration](docs/configuration.md),
-and [architecture](docs/architecture.md).
+See [Storage concepts](docs/concepts.md), [Blob/CAS usage](docs/blobs.md),
+[configuration](docs/configuration.md), and
+[architecture](docs/architecture.md).
 
 ## Existing low-level API
 

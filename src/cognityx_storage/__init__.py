@@ -1,6 +1,15 @@
 """Shared storage abstractions for Cognityx platform components."""
 
 from cognityx_storage.backend import StorageBackend
+from cognityx_storage.blob import BlobRef, BlobStore
+from cognityx_storage.cas import (
+    SUPPORTED_DEDUP_SCOPES,
+    build_cas_key,
+    derive_blob_id,
+    hash_file,
+    hash_stream,
+    resolve_dedup_domain,
+)
 from cognityx_storage.capabilities import StorageCapabilities
 from cognityx_storage.client import StorageClient
 from cognityx_storage.config import (
@@ -37,6 +46,8 @@ from cognityx_storage.runtime import (
 
 __all__ = [
     "DEFAULT_STORAGE_ROOT",
+    "BlobRef",
+    "BlobStore",
     "InvalidStorageKeyError",
     "LocalStorageBackend",
     "ObjectAlreadyExistsError",
@@ -61,6 +72,12 @@ __all__ = [
     "StorageValidationIssue",
     "StorageValidationReport",
     "StoredObject",
+    "SUPPORTED_DEDUP_SCOPES",
     "UnsupportedOperationError",
     "default_backend_factory",
+    "build_cas_key",
+    "derive_blob_id",
+    "hash_file",
+    "hash_stream",
+    "resolve_dedup_domain",
 ]
