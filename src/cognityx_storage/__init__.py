@@ -28,6 +28,12 @@ from cognityx_storage.local import (
     LocalStorageBackend,
 )
 from cognityx_storage.models import StoredObject
+from cognityx_storage.runtime import (
+    ResolvedRoleStore,
+    StorageRoleResolution,
+    StorageRoleResolver,
+    StorageRuntime,
+)
 
 __all__ = [
     "DEFAULT_STORAGE_ROOT",
@@ -36,6 +42,7 @@ __all__ = [
     "ObjectAlreadyExistsError",
     "ObjectConsistencyError",
     "ObjectNotFoundError",
+    "ResolvedRoleStore",
     "StorageBackend",
     "StorageBackendFactory",
     "StorageCapabilities",
@@ -47,7 +54,10 @@ __all__ = [
     "StorageProviderUnavailableError",
     "StorageRole",
     "StorageRoleNotFoundError",
+    "StorageRoleResolution",
+    "StorageRoleResolver",
     "StorageRoleUnavailableError",
+    "StorageRuntime",
     "StorageValidationIssue",
     "StorageValidationReport",
     "StoredObject",

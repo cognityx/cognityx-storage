@@ -1,76 +1,66 @@
 # Cognityx Storage
 
 `cognityx-storage` gives Cognityx services one small storage API without making
-them depend on filesystem paths or cloud SDKs. The first backend is a pass-through
-to a local filesystem. Future backends can map the same logical keys to object or
-cloud storage.
+them select filesystem paths or provider SDKs.
 
-The default local data root is:
-
-```text
-/mnt/d/AI/cognitive/cognityx-storage
-```
-
-Constructing a client does not create the directory. The backend creates only
-the parent directories needed by the first write.
-
-## Basic use
+## Quick start
 
 ```python
-from cognityx_storage import LocalStorageBackend, StorageClient
+from cognityx_storage import StorageRuntime
 
-storage = StorageClient(LocalStorageBackend())
-user_storage = storage.for_user("alice")
+storage = StorageRuntime.load()
+assets = storage.for_role("source_asset")
 
-document = user_storage.put_file(
-    "documents/report-001/source.pdf",
-    "/tmp/upload.pdf",
+stored = assets.put_file(
+    "incoming/report.pdf",
+    "/tmp/report.pdf",
 )
 
-user_storage.put_json(
-    "agents/research-agent/checkpoints/checkpoint-001.json",
-    {"last_document": document.key},
+print(stored.uri)
+# storage://local-main/source-assets/incoming/report.pdf
+```
+
+With no configuration, the runtime uses the existing default local root and
+defines roles for catalogs, source assets, artifacts, datasets, models, caches,
+and temporary content. Directories are created only by the first write.
+
+To select a project configuration explicitly:
+
+```python
+storage = StorageRuntime.load(
+    config_file=".cognityx/storage.toml",
 )
-
-with user_storage.open("agents/research-agent/checkpoints/checkpoint-001.json") as source:
-    checkpoint = source.read()
+datasets = storage.for_role("dataset")
 ```
 
-Shared platform data uses a separate scope:
+Inspect routing without exposing provider secrets:
 
 ```python
-shared = storage.for_shared_data()
-shared.put_directory("models/qwen-adapter/version-001", "/tmp/qwen-adapter")
+report = storage.describe()
 ```
 
-## RAG boundary
+## Profiles and roles
 
-Original documents, extracted text, chunks, and provenance belong in this
-storage layer. A vector database stores embeddings and references the stable
-logical keys of those chunks.
+A profile describes where and how storage exists. A role describes what a
+Cognityx service wants to store. The runtime resolves the role's preferred
+profile or the first available fallback.
 
-JSON is appropriate for metadata and checkpoints. JSONL is a practical initial
-format for chunks and modest datasets. Dataset or ingestion components may
-publish Parquet for larger structured data; storage treats all of these formats
-as opaque content.
+Only the filesystem provider performs I/O today. Object and HDFS profiles may
+be configured for forward-compatible deployment plans, but they are reported
+as unavailable and require an available fallback.
 
-## Scope and security
+See [Storage concepts](docs/concepts.md), [configuration](docs/configuration.md),
+and [architecture](docs/architecture.md).
 
-`for_user()` and `for_shared_data()` prevent callers from accidentally building
-paths outside their logical namespace. Keys reject absolute paths, `..`, control
-characters, and platform-specific separators.
+## Existing low-level API
 
-To remove an object, use the scoped client. Directory deletion requires an
-explicit recursive opt-in:
+`StorageClient`, `LocalStorageBackend`, `for_user()`, and `for_shared_data()`
+remain supported. Their existing key and URI behavior is unchanged so already
+published Ingest metadata remains valid. New services should normally begin
+with `StorageRuntime`.
 
-```python
-shared.delete("ingest/documents/doc-123", recursive=True)
-```
-
-This first local backend is not a production authorization system. A future
-authenticated client or storage service can enforce tenant identities, roles,
-audit logging, and encryption while preserving the application-facing storage
-operations.
+This package does not implement authorization, replication, migration, CAS, or
+deduplication.
 
 ## Development
 

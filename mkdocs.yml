@@ -16,5 +16,7 @@ markdown_extensions:
 nav:
   - Cognityx Home: https://cognityx.github.io/
   - Overview: index.md
+  - Concepts: concepts.md
+  - Configuration: configuration.md
   - Architecture: architecture.md
   - Development: development.md

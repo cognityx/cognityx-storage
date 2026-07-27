@@ -12,6 +12,7 @@ from cognityx_storage.exceptions import (
     InvalidStorageKeyError,
     ObjectAlreadyExistsError,
     ObjectConsistencyError,
+    UnsupportedOperationError,
 )
 from cognityx_storage.local import LocalStorageBackend, validate_storage_key
 from cognityx_storage.models import StoredObject
@@ -113,6 +114,15 @@ class StorageClient:
         resolver = getattr(self._backend, "resolve_local_path", None)
         if resolver is None:
             return None
+        return resolver(self._scoped_key(key))
+
+    def native_path(self, key: str) -> Path:
+        """Return a native target path, including for content not created yet."""
+        resolver = getattr(self._backend, "native_path", None)
+        if resolver is None:
+            raise UnsupportedOperationError(
+                f"Backend {self.backend_name} does not provide native paths."
+            )
         return resolver(self._scoped_key(key))
 
     def uri(self, key: str) -> str:

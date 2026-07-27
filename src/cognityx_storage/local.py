@@ -190,6 +190,10 @@ class LocalStorageBackend:
         """Return the existing local object path without any materialization."""
         return self._existing_path(key)
 
+    def native_path(self, key: str) -> Path:
+        """Return the safe filesystem target for a possibly uncreated object."""
+        return self._path(key)
+
     def stat(self, key: str) -> StoredObject:
         normalized = validate_storage_key(key)
         return self._describe(self._existing_path(normalized), normalized)

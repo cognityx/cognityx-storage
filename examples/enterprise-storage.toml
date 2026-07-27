@@ -1,0 +1,44 @@
+[storage]
+default_profile = "local-main"
+
+[storage.profiles.local-main]
+type = "filesystem"
+root = "/mnt/d/AI/cognitive/cognityx-storage"
+
+[storage.profiles.primary-object]
+type = "object"
+provider = "s3"
+endpoint = "https://object.company.example"
+bucket = "cognityx"
+credentials_ref = "env:COGNITYX_OBJECT_CREDENTIALS"
+
+[storage.profiles.enterprise-hdfs]
+type = "hdfs"
+endpoint = "hdfs://namenode:8020"
+root = "/cognityx"
+
+[storage.roles.catalog]
+profile = "local-main"
+namespace = "catalog"
+preferred_capabilities = ["native_path", "random_write", "file_locking"]
+
+[storage.roles.source_asset]
+profile = "primary-object"
+fallback_profiles = ["local-main"]
+namespace = "source-assets"
+preferred_capabilities = [
+  "stream_read",
+  "stream_write",
+  "distributed",
+  "object_metadata",
+]
+
+[storage.roles.dataset]
+profile = "enterprise-hdfs"
+fallback_profiles = ["primary-object", "local-main"]
+namespace = "datasets"
+preferred_capabilities = [
+  "stream_read",
+  "stream_write",
+  "large_sequential_io",
+]

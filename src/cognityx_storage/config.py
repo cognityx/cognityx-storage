@@ -32,7 +32,7 @@ _DEFAULT_ROLE_NAMESPACES = {
     "cache": "cache",
     "temporary": "temporary",
 }
-_SECRET_MARKERS = ("credential", "secret", "password", "token", "access_key", "private_key")
+_SECRET_MARKERS = ("credential", "secret", "password", "token")
 
 
 def _freeze(value: Any) -> Any:
@@ -55,7 +55,8 @@ def _redacted_options(options: Mapping[str, Any]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in options.items():
         lowered = key.lower()
-        if any(marker in lowered for marker in _SECRET_MARKERS):
+        key_parts = set(re.split(r"[^a-z0-9]+", lowered))
+        if any(marker in lowered for marker in _SECRET_MARKERS) or "key" in key_parts:
             result[key] = "<redacted>"
         elif isinstance(value, Mapping):
             result[key] = _redacted_options(value)
@@ -440,7 +441,7 @@ class StorageConfig:
                     )
                 )
             elif resolved is not None and not unknown_capabilities:
-                missing = resolved.expected_capabilities.missing(
+                missing = factory.capabilities(resolved.type).missing(
                     role.preferred_capabilities
                 )
                 if missing:
@@ -474,6 +475,11 @@ class StorageConfig:
                     "type": profile.type,
                     "implementation_available": factory.is_available(profile.type),
                     "expected_capabilities": profile.expected_capabilities.to_dict(),
+                    "available_capabilities": (
+                        factory.capabilities(profile.type).to_dict()
+                        if factory.is_available(profile.type)
+                        else None
+                    ),
                     "options": _redacted_options(profile.options),
                 }
                 for profile in self.profiles.values()

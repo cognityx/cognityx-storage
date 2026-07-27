@@ -212,6 +212,7 @@ def test_secret_values_are_redacted_from_description() -> None:
                         "type": "object",
                         "credentials_ref": secret,
                         "nested": {"access_token": secret},
+                        "api_key": secret,
                     }
                 },
                 "roles": {},
@@ -222,7 +223,7 @@ def test_secret_values_are_redacted_from_description() -> None:
     rendered = json.dumps(config.describe())
 
     assert secret not in rendered
-    assert rendered.count("<redacted>") == 2
+    assert rendered.count("<redacted>") == 3
 
 
 def test_invalid_toml_and_table_shapes_fail_clearly(tmp_path: Path) -> None:
