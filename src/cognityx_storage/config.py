@@ -204,6 +204,13 @@ class StorageConfig:
                 profile="local-main",
                 namespace=namespace,
                 dedup_scope="none" if name == "temporary" else "tenant",
+                preferred_capabilities=(
+                    "native_path",
+                    "random_write",
+                    "file_locking",
+                )
+                if name == "catalog"
+                else (),
             )
             for name, namespace in _DEFAULT_ROLE_NAMESPACES.items()
         }
