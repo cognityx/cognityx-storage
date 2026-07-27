@@ -53,3 +53,7 @@ class StorageBackend(Protocol):
     def list(self, prefix: str = "") -> tuple[StoredObject, ...]:
         """List the immediate children under a logical prefix."""
         ...
+
+    def delete(self, key: str, *, recursive: bool = False) -> None:
+        """Delete one logical object, optionally allowing a directory tree."""
+        ...

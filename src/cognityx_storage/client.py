@@ -101,6 +101,10 @@ class StorageClient:
         """List immediate children within this client's scope."""
         return self._backend.list(self._scoped_key(prefix, allow_empty=True))
 
+    def delete(self, key: str, *, recursive: bool = False) -> None:
+        """Delete one scoped object without exposing backend paths."""
+        self._backend.delete(self._scoped_key(key), recursive=recursive)
+
     def _scoped_key(self, key: str, *, allow_empty: bool = False) -> str:
         normalized = validate_storage_key(key, allow_empty=allow_empty)
         if self._scope and normalized:

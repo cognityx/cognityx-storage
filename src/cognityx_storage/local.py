@@ -201,6 +201,18 @@ class LocalStorageBackend:
             if not child.name.startswith(".")
         )
 
+    def delete(self, key: str, *, recursive: bool = False) -> None:
+        """Remove a logical file or an explicitly approved directory tree."""
+        path = self._existing_path(key)
+        if path.is_dir():
+            if not recursive:
+                raise UnsupportedOperationError(
+                    f"Deleting a directory requires recursive=True: {key}"
+                )
+            shutil.rmtree(path)
+            return
+        path.unlink()
+
     def _existing_path(self, key: str) -> Path:
         normalized = validate_storage_key(key)
         path = self._path(normalized)

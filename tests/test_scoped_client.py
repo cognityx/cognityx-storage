@@ -1,7 +1,9 @@
 import json
 from pathlib import Path
 
-from cognityx_storage import LocalStorageBackend, StorageClient
+import pytest
+
+from cognityx_storage import LocalStorageBackend, StorageClient, UnsupportedOperationError
 
 
 def test_user_clients_are_isolated_by_logical_prefix(tmp_path: Path) -> None:
@@ -41,3 +43,17 @@ def test_client_lists_only_its_scope(tmp_path: Path) -> None:
         "users/alice/documents/one.json"
     ]
 
+
+def test_client_deletes_only_within_its_scope(tmp_path: Path) -> None:
+    root = StorageClient(LocalStorageBackend(tmp_path))
+    alice = root.for_user("alice")
+    bob = root.for_user("bob")
+    alice.put_json("documents/one/record.json", {"id": 1})
+    bob.put_json("documents/two/record.json", {"id": 2})
+
+    with pytest.raises(UnsupportedOperationError):
+        alice.delete("documents/one")
+    alice.delete("documents/one", recursive=True)
+
+    assert not alice.exists("documents/one")
+    assert bob.exists("documents/two/record.json")

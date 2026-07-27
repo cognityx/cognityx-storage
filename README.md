@@ -60,6 +60,13 @@ as opaque content.
 paths outside their logical namespace. Keys reject absolute paths, `..`, control
 characters, and platform-specific separators.
 
+To remove an object, use the scoped client. Directory deletion requires an
+explicit recursive opt-in:
+
+```python
+shared.delete("ingest/documents/doc-123", recursive=True)
+```
+
 This first local backend is not a production authorization system. A future
 authenticated client or storage service can enforce tenant identities, roles,
 audit logging, and encryption while preserving the application-facing storage
@@ -72,4 +79,3 @@ uv sync --extra dev
 uv run pytest
 uv build
 ```
-
