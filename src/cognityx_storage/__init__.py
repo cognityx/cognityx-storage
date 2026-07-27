@@ -1,7 +1,7 @@
 """Shared storage abstractions for Cognityx platform components."""
 
 from cognityx_storage.backend import StorageBackend
-from cognityx_storage.blob import BlobRef, BlobStore
+from cognityx_storage.blob import BlobRef, BlobStore, ContentDigest, PreparedBlob
 from cognityx_storage.cas import (
     SUPPORTED_DEDUP_SCOPES,
     build_cas_key,
@@ -48,11 +48,13 @@ __all__ = [
     "DEFAULT_STORAGE_ROOT",
     "BlobRef",
     "BlobStore",
+    "ContentDigest",
     "InvalidStorageKeyError",
     "LocalStorageBackend",
     "ObjectAlreadyExistsError",
     "ObjectConsistencyError",
     "ObjectNotFoundError",
+    "PreparedBlob",
     "ResolvedRoleStore",
     "StorageBackend",
     "StorageBackendFactory",

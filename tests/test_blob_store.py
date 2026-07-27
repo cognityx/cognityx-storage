@@ -9,7 +9,9 @@ import pytest
 from cognityx_resource import ResourceContext
 from cognityx_storage import (
     BlobStore,
+    ContentDigest,
     ObjectConsistencyError,
+    PreparedBlob,
     StorageConfig,
     StorageRuntime,
     build_cas_key,
@@ -155,6 +157,124 @@ def test_put_file_publishes_captured_snapshot_when_source_mutates(
     assert stored == captured
     assert sha256(stored).hexdigest() == reference.digest
     assert len(stored) == reference.size_bytes
+
+
+def test_prepare_file_captures_once_and_publishes_exact_snapshot(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source = tmp_path / "report.pdf"
+    captured = b"captured before caller mutation"
+    source.write_bytes(captured)
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    runtime = _runtime(tmp_path / "storage")
+    blobs = BlobStore(
+        runtime,
+        runtime.for_role("source_asset"),
+        spool_directory=spool,
+    )
+    original_open = Path.open
+    source_open_count = 0
+
+    def count_source_open(path, *args, **kwargs):
+        nonlocal source_open_count
+        if path == source:
+            source_open_count += 1
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", count_source_open)
+
+    with blobs.prepare_file(source) as prepared:
+        assert isinstance(prepared, PreparedBlob)
+        assert isinstance(prepared.content, ContentDigest)
+        assert source_open_count == 1
+        assert prepared.algorithm == "sha256"
+        assert prepared.digest == sha256(captured).hexdigest()
+        assert prepared.size_bytes == len(captured)
+        assert prepared.media_type == "application/pdf"
+        source.write_bytes(b"replacement")
+        reference = prepared.publish(context=_context())
+        with pytest.raises(RuntimeError, match="already been published"):
+            prepared.publish(context=_context())
+
+    assert list(spool.iterdir()) == []
+    with runtime.open_blob(reference) as opened:
+        assert opened.read() == captured
+    with pytest.raises(RuntimeError, match="closed"):
+        prepared.publish(context=_context())
+
+
+def test_prepare_file_cleanup_without_publication(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source.bin"
+    source.write_bytes(b"discarded")
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    runtime = _runtime(tmp_path / "storage")
+    blobs = BlobStore(
+        runtime,
+        runtime.for_role("source_asset"),
+        spool_directory=spool,
+    )
+
+    with blobs.prepare_file(source) as prepared:
+        assert prepared.digest == sha256(b"discarded").hexdigest()
+        assert len(list(spool.iterdir())) == 1
+
+    assert list(spool.iterdir()) == []
+    assert _physical_blobs(tmp_path / "storage") == []
+
+
+def test_prepare_file_cleanup_on_caller_exception(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source.bin"
+    source.write_bytes(b"discarded")
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    runtime = _runtime(tmp_path / "storage")
+    blobs = BlobStore(
+        runtime,
+        runtime.for_role("source_asset"),
+        spool_directory=spool,
+    )
+
+    with pytest.raises(RuntimeError, match="caller failed"):
+        with blobs.prepare_file(source):
+            raise RuntimeError("caller failed")
+
+    assert list(spool.iterdir()) == []
+    assert _physical_blobs(tmp_path / "storage") == []
+
+
+def test_prepare_file_cleanup_on_publication_failure(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source = tmp_path / "source.bin"
+    source.write_bytes(b"content")
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    runtime = _runtime(tmp_path / "storage")
+    role_store = runtime.for_role("source_asset")
+    blobs = BlobStore(
+        runtime,
+        role_store,
+        spool_directory=spool,
+    )
+
+    def fail_publication(*args, **kwargs):
+        raise RuntimeError("publication failed")
+
+    monkeypatch.setattr(role_store, "put_file", fail_publication)
+
+    with pytest.raises(RuntimeError, match="publication failed"):
+        with blobs.prepare_file(source) as prepared:
+            prepared.publish(context=_context())
+
+    assert list(spool.iterdir()) == []
 
 
 def test_put_file_staging_cleanup_on_success(

@@ -108,6 +108,108 @@ class BlobRef:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class ContentDigest:
+    """Provider-neutral identity of one captured, unpublished byte snapshot."""
+
+    algorithm: str
+    digest: str
+    size_bytes: int
+    media_type: str
+
+    def __post_init__(self) -> None:
+        if self.algorithm != SHA256:
+            raise ValueError(
+                f"Unsupported content digest algorithm: {self.algorithm}"
+            )
+        validate_sha256_digest(self.digest)
+        if not isinstance(self.size_bytes, int) or isinstance(
+            self.size_bytes, bool
+        ):
+            raise ValueError(
+                "ContentDigest size_bytes must be a non-negative integer."
+            )
+        if self.size_bytes < 0:
+            raise ValueError(
+                "ContentDigest size_bytes must be a non-negative integer."
+            )
+        if not isinstance(self.media_type, str) or not self.media_type:
+            raise ValueError(
+                "ContentDigest media_type must be a non-empty string."
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+class PreparedBlob:
+    """One unpublished staged snapshot owned by a :class:`BlobStore`."""
+
+    def __init__(
+        self,
+        blob_store: "BlobStore",
+        temporary: tempfile.TemporaryDirectory[str],
+        path: Path,
+        content: ContentDigest,
+    ) -> None:
+        self._blob_store = blob_store
+        self._temporary = temporary
+        self._path = path
+        self._content = content
+        self._active = True
+        self._published = False
+
+    @property
+    def content(self) -> ContentDigest:
+        return self._content
+
+    @property
+    def algorithm(self) -> str:
+        return self._content.algorithm
+
+    @property
+    def digest(self) -> str:
+        return self._content.digest
+
+    @property
+    def size_bytes(self) -> int:
+        return self._content.size_bytes
+
+    @property
+    def media_type(self) -> str:
+        return self._content.media_type
+
+    def publish(self, *, context: ResourceContext) -> BlobRef:
+        """Publish the captured bytes once through the owning BlobStore."""
+        if not self._active:
+            raise RuntimeError("PreparedBlob is closed and cannot be published.")
+        if self._published:
+            raise RuntimeError("PreparedBlob has already been published.")
+        reference = self._blob_store._publish(
+            self._path,
+            digest=self.digest,
+            size_bytes=self.size_bytes,
+            media_type=self.media_type,
+            context=context,
+        )
+        self._published = True
+        return reference
+
+    def close(self) -> None:
+        """Discard the temporary snapshot if it is still active."""
+        if self._active:
+            self._temporary.cleanup()
+            self._active = False
+
+    def __enter__(self) -> "PreparedBlob":
+        if not self._active:
+            raise RuntimeError("PreparedBlob is already closed.")
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        self.close()
+
+
 class BlobStore:
     """Publish immutable content through one resolved storage role."""
 
@@ -141,6 +243,16 @@ class BlobStore:
         context: ResourceContext,
         media_type: str | None = None,
     ) -> BlobRef:
+        with self.prepare_file(source, media_type=media_type) as prepared:
+            return prepared.publish(context=context)
+
+    def prepare_file(
+        self,
+        source: str | Path,
+        *,
+        media_type: str | None = None,
+    ) -> PreparedBlob:
+        """Capture one file snapshot without publishing a durable Blob."""
         path = Path(source)
         if not path.is_file():
             raise FileNotFoundError(f"Blob source file does not exist: {path}")
@@ -150,9 +262,8 @@ class BlobStore:
             or "application/octet-stream"
         )
         with path.open("rb") as source_stream:
-            return self._stage_stream_and_publish(
+            return self._prepare_stream(
                 source_stream,
-                context=context,
                 media_type=selected_media_type,
             )
 
@@ -163,34 +274,48 @@ class BlobStore:
         context: ResourceContext,
         media_type: str = "application/octet-stream",
     ) -> BlobRef:
-        return self._stage_stream_and_publish(
-            source,
-            context=context,
-            media_type=media_type,
-        )
+        with self.prepare_stream(source, media_type=media_type) as prepared:
+            return prepared.publish(context=context)
 
-    def _stage_stream_and_publish(
+    def prepare_stream(
         self,
         source: BinaryIO,
         *,
-        context: ResourceContext,
+        media_type: str = "application/octet-stream",
+    ) -> PreparedBlob:
+        """Capture one stream snapshot without publishing a durable Blob."""
+        return self._prepare_stream(source, media_type=media_type)
+
+    def _prepare_stream(
+        self,
+        source: BinaryIO,
+        *,
         media_type: str,
-    ) -> BlobRef:
-        with tempfile.TemporaryDirectory(
+    ) -> PreparedBlob:
+        temporary = tempfile.TemporaryDirectory(
             prefix="cognityx-blob-",
             dir=self._spool_directory,
-        ) as temporary:
-            path = Path(temporary) / "content"
+        )
+        try:
+            path = Path(temporary.name) / "content"
             with path.open("wb") as destination:
                 digest, size = copy_and_hash_stream(source, destination)
                 destination.flush()
-            return self._publish(
-                path,
+            content = ContentDigest(
+                algorithm=SHA256,
                 digest=digest,
                 size_bytes=size,
                 media_type=media_type,
-                context=context,
             )
+            return PreparedBlob(
+                self,
+                temporary,
+                path,
+                content,
+            )
+        except BaseException:
+            temporary.cleanup()
+            raise
 
     def put_bytes(
         self,

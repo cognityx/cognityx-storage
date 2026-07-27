@@ -124,6 +124,13 @@ pipeline. This guarantees that the Blob digest and size describe the bytes
 actually published even if the caller's original file changes. Temporary
 content is cleaned after both successful and failed operations.
 
+`PreparedBlob` exposes this unpublished stage to domain services that must
+decide whether to accept content before durable publication. It owns the
+temporary lifecycle and exposes only a provider-neutral `ContentDigest`.
+Publication still delegates to the same BlobStore CAS path, so callers cannot
+construct physical keys, dedup domains or Blob IDs. This is a small
+prepare/commit boundary, not a general storage transaction framework.
+
 ## Native paths
 
 `native_path(key)` returns the safe filesystem target for a role and key,

@@ -73,6 +73,29 @@ published, so later changes to a caller's file cannot alter the Blob. Streams
 do not need to support seeking. Staged content is cleaned after success or
 failure.
 
+## Inspect before publication
+
+A domain service may need content identity before deciding whether to accept a
+new logical resource. Storage can capture an unpublished snapshot:
+
+```python
+with blobs.prepare_file("/tmp/report.pdf") as prepared:
+    print(prepared.digest, prepared.size_bytes, prepared.media_type)
+
+    if should_accept(prepared.content):
+        blob = prepared.publish(context=context)
+```
+
+`prepared.content` is an immutable `ContentDigest`; it contains the algorithm,
+digest, size and media type, but no CAS key, dedup domain or physical location.
+`prepare_stream()` provides the same behavior for a binary stream.
+
+The snapshot is published at most once. Leaving the context without publishing
+discards it. Successful publication, caller exceptions and backend failures all
+clean the temporary content, and a closed `PreparedBlob` cannot be published.
+The ordinary `put_file()`, `put_stream()` and `put_bytes()` methods use the
+same preparation pipeline internally.
+
 ## Deduplication behavior
 
 The role's `dedup_scope` controls physical reuse:
