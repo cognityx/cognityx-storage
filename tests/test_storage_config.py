@@ -61,6 +61,16 @@ def test_zero_config_has_local_profile_and_standard_roles(
     assert config.validate().is_valid
 
 
+def test_built_in_catalog_role_prefers_sqlite_capabilities() -> None:
+    catalog = StorageConfig.built_in().roles["catalog"]
+
+    assert catalog.preferred_capabilities == (
+        "native_path",
+        "random_write",
+        "file_locking",
+    )
+
+
 def test_config_file_precedence(tmp_path: Path, monkeypatch) -> None:
     explicit = _write_config(tmp_path / "explicit.toml", "explicit")
     environment = _write_config(tmp_path / "environment.toml", "environment")
