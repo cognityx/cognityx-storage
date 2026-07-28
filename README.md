@@ -78,10 +78,14 @@ with `StorageRuntime`.
 This package does not implement authorization, replication, migration, CAS, or
 deduplication.
 
-## Development
+## Contributing
 
-```text
+```bash
 uv sync --extra dev
 uv run pytest
+uv run mkdocs build --strict
 uv build
 ```
+
+GitHub CI runs these same convention-based commands and automatically collects
+every test below `tests/`.
