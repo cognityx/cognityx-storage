@@ -9,7 +9,7 @@ from typing import Any
 from uuid import uuid4
 
 from cognityx_storage.blob import BlobRef
-from cognityx_storage.exceptions import StorageError
+from cognityx_storage.exceptions import ObjectNotFoundError, StorageError
 from cognityx_storage.runtime import StorageRuntime, ResolvedRoleStore
 
 _CAS_PATTERN = re.compile(
@@ -98,13 +98,14 @@ class BlobGarbageCollector:
         *,
         referenced_blob_refs: tuple[BlobRef, ...] | list[BlobRef] = (),
         older_than: timedelta = timedelta(days=7),
+        profile_hint_blob_refs: tuple[BlobRef, ...] | list[BlobRef] = (),
     ) -> BlobGcPlan:
         if older_than <= timedelta(0):
             raise ValueError("older_than must be greater than zero.")
         references = {
             (ref.profile_name, ref.storage_key) for ref in referenced_blob_refs
         }
-        stores = self._stores(referenced_blob_refs)
+        stores, warnings = self._stores(referenced_blob_refs, profile_hint_blob_refs)
         now = datetime.now(UTC).timestamp()
         grace_seconds = older_than.total_seconds()
         candidates: list[BlobGcCandidate] = []
@@ -156,6 +157,7 @@ class BlobGarbageCollector:
             deletion_candidates=tuple(candidates),
             reclaimable_bytes=sum(candidate.size_bytes for candidate in candidates),
             skipped_objects=tuple(skipped),
+            warnings=tuple(warnings),
         )
 
     def execute(
@@ -167,7 +169,7 @@ class BlobGarbageCollector:
         references = {
             (ref.profile_name, ref.storage_key) for ref in referenced_blob_refs
         }
-        stores = dict(self._stores(referenced_blob_refs, include_plan=plan))
+        stores = dict(self._stores(referenced_blob_refs, include_plan=plan)[0])
         deleted = absent = skipped = failed = reclaimed = 0
         failures: list[dict[str, str]] = []
         now = datetime.now(UTC).timestamp()
@@ -196,7 +198,7 @@ class BlobGarbageCollector:
                 deleted += 1
                 reclaimed += candidate.size_bytes
             except StorageError as exc:
-                if exc.__class__.__name__ == "ObjectNotFoundError":
+                if isinstance(exc, ObjectNotFoundError):
                     absent += 1
                 else:
                     failed += 1
@@ -212,9 +214,10 @@ class BlobGarbageCollector:
     def _stores(
         self,
         refs: tuple[BlobRef, ...] | list[BlobRef],
+        hints: tuple[BlobRef, ...] | list[BlobRef] = (),
         *,
         include_plan: BlobGcPlan | None = None,
-    ) -> list[tuple[str, ResolvedRoleStore]]:
+    ) -> tuple[list[tuple[str, ResolvedRoleStore]], list[str]]:
         role = self._runtime.config.roles.get(self._role_name)
         names: set[str] = set()
         if role is not None:
@@ -226,15 +229,18 @@ class BlobGarbageCollector:
         except StorageError:
             pass
         names.update(ref.profile_name for ref in refs if ref.role_name == self._role_name)
+        names.update(ref.profile_name for ref in hints if ref.role_name == self._role_name)
         if include_plan:
             names.update(candidate.profile_name for candidate in include_plan.deletion_candidates)
         stores: list[tuple[str, ResolvedRoleStore]] = []
+        warnings: list[str] = []
         for name in names:
             try:
                 stores.append((name, self._runtime.for_profile(name, role_name=self._role_name)))
             except StorageError:
+                warnings.append(f"profile {name}: unavailable for role {self._role_name}")
                 continue
-        return stores
+        return stores, warnings
 
     @staticmethod
     def _walk(store: ResolvedRoleStore, prefix: str):
