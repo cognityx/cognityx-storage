@@ -7,6 +7,7 @@ import time
 
 from cognityx_resource import ResourceContext
 from cognityx_storage import StorageConfig, StorageRuntime
+from cognityx_storage.runtime import ResolvedRoleStore
 
 
 def _runtime(root: Path) -> StorageRuntime:
@@ -83,3 +84,39 @@ def test_gc_revalidates_a_new_reference_before_delete(tmp_path: Path) -> None:
     assert result.skipped_objects == 1
     assert result.skips[0]["reason"] == "now_referenced"
     assert runtime.blob_exists(orphan)
+
+
+def test_gc_continues_after_ordinary_backend_delete_failure(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    runtime = _runtime(tmp_path)
+    store = runtime.blobs("source_asset")
+    context = ResourceContext(tenant_id="tenant-a")
+    failed_ref = store.put_bytes(b"fail", context=context)
+    successful_ref = store.put_bytes(b"success", context=context)
+    _old_cas_file(tmp_path, failed_ref.storage_key)
+    _old_cas_file(tmp_path, successful_ref.storage_key)
+    plan = runtime.blob_gc().plan(older_than=timedelta(seconds=1))
+    original_delete = ResolvedRoleStore.delete
+
+    def selective_delete(self, key):
+        full_key = f"{self.namespace}/{key}" if self.namespace else key
+        if full_key == failed_ref.storage_key:
+            raise RuntimeError("simulated backend failure")
+        return original_delete(self, key)
+
+    monkeypatch.setattr(ResolvedRoleStore, "delete", selective_delete)
+
+    result = runtime.blob_gc().execute(plan)
+
+    assert result.failed_objects == 1
+    assert result.deleted_objects == 1
+    assert result.reclaimed_bytes == len(b"success")
+    assert result.failures == ({
+        "profile": failed_ref.profile_name,
+        "storage_key": failed_ref.storage_key,
+        "category": "RuntimeError",
+        "message": "simulated backend failure",
+    },)
+    assert runtime.blob_exists(failed_ref)
+    assert not runtime.blob_exists(successful_ref)
