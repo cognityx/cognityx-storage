@@ -2,6 +2,7 @@
 
 from cognityx_storage.backend import StorageBackend
 from cognityx_storage.blob import BlobRef, BlobStore, ContentDigest, PreparedBlob
+from cognityx_storage.blob_gc import BlobGarbageCollector, BlobGcCandidate, BlobGcPlan, BlobGcResult
 from cognityx_storage.cas import (
     SUPPORTED_DEDUP_SCOPES,
     build_cas_key,
@@ -47,6 +48,10 @@ from cognityx_storage.runtime import (
 __all__ = [
     "DEFAULT_STORAGE_ROOT",
     "BlobRef",
+    "BlobGarbageCollector",
+    "BlobGcCandidate",
+    "BlobGcPlan",
+    "BlobGcResult",
     "BlobStore",
     "ContentDigest",
     "InvalidStorageKeyError",

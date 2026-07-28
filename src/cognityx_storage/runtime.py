@@ -318,11 +318,45 @@ class StorageRuntime:
             self._backends[profile.name] = backend
         return ResolvedRoleStore(resolution, backend)
 
+    def for_profile(
+        self, profile_name: str, *, role_name: str = "source_asset"
+    ) -> ResolvedRoleStore:
+        """Bind one configured profile to a role namespace for audit/GC work."""
+        role = self.config.roles.get(role_name)
+        profile = self.config.profiles.get(profile_name)
+        if role is None or profile is None:
+            raise StorageRoleNotFoundError(
+                f"Storage profile or role is not configured: {profile_name}/{role_name}"
+            )
+        if not self._factory.is_available(profile.type):
+            raise StorageProviderUnavailableError(
+                f"Storage profile '{profile_name}' provider is unavailable."
+            )
+        resolution = StorageRoleResolution(
+            role=role,
+            requested_profile=profile_name,
+            resolved_profile=profile,
+            profiles_tried=(profile_name,),
+            reason=None,
+            warnings=(),
+            capabilities=self._factory.capabilities(profile.type),
+        )
+        backend = self._backends.get(profile.name)
+        if backend is None:
+            backend = self._factory.build(profile)
+            self._backends[profile.name] = backend
+        return ResolvedRoleStore(resolution, backend)
+
     def blobs(self, role_name: str) -> BlobStore:
         """Return immutable Blob/CAS operations bound to a configured role."""
         store = self.for_role(role_name)
         role = self.config.roles[role_name]
         return BlobStore(self, store, dedup_scope=role.dedup_scope)
+
+    def blob_gc(self, role_name: str = "source_asset"):
+        from cognityx_storage.blob_gc import BlobGarbageCollector
+
+        return BlobGarbageCollector(self, role_name=role_name)
 
     def open_blob(self, blob_ref: BlobRef) -> BinaryIO:
         """Open a durable BlobRef through the profile recorded at creation."""

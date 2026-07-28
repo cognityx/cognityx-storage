@@ -61,6 +61,14 @@ Normal code continues to use familiar operations such as `put_file`, `open`,
 `exists`, `stat`, and `list`. Diagnostics are available through
 `storage.describe()` and properties on the resolved role store.
 
+## Blob garbage collection
+
+`runtime.blob_gc("source_asset")` provides dry-run-first physical cleanup for
+CAS Blobs. Ingest supplies live `BlobRef` identities; Storage scans only valid
+`blob-domains/` objects, protects objects inside the grace period (seven days
+by default), and revalidates references and object identity before deletion.
+Metadata under `source-contexts/` and catalog files are never candidates.
+
 ## Blob
 
 A Blob is immutable stored content. `BlobStore` hashes content, derives its

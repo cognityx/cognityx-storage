@@ -12,4 +12,4 @@ class StoredObject:
     size_bytes: int
     media_type: str
     is_directory: bool = False
-
+    last_modified: float | None = None

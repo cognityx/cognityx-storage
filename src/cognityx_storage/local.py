@@ -256,4 +256,5 @@ class LocalStorageBackend:
             size_bytes=_directory_size(path) if is_directory else path.stat().st_size,
             media_type=resolved_media_type,
             is_directory=is_directory,
+            last_modified=path.stat().st_mtime,
         )
