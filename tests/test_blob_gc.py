@@ -81,4 +81,5 @@ def test_gc_revalidates_a_new_reference_before_delete(tmp_path: Path) -> None:
 
     assert result.deleted_objects == 0
     assert result.skipped_objects == 1
+    assert result.skips[0]["reason"] == "now_referenced"
     assert runtime.blob_exists(orphan)

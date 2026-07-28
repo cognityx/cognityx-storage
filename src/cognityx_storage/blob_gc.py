@@ -73,6 +73,7 @@ class BlobGcResult:
     failed_objects: int
     reclaimed_bytes: int
     failures: tuple[dict[str, str], ...] = ()
+    skips: tuple[dict[str, str], ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -83,6 +84,7 @@ class BlobGcResult:
             "failed_objects": self.failed_objects,
             "reclaimed_bytes": self.reclaimed_bytes,
             "failures": list(self.failures),
+            "skips": list(self.skips),
         }
 
 
@@ -172,27 +174,33 @@ class BlobGarbageCollector:
         stores = dict(self._stores(referenced_blob_refs, include_plan=plan)[0])
         deleted = absent = skipped = failed = reclaimed = 0
         failures: list[dict[str, str]] = []
+        skips: list[dict[str, str]] = []
         now = datetime.now(UTC).timestamp()
         for candidate in plan.deletion_candidates:
             identity = (candidate.profile_name, candidate.storage_key)
             if identity in references:
                 skipped += 1
+                skips.append({"profile": candidate.profile_name, "storage_key": candidate.storage_key, "reason": "now_referenced"})
                 continue
             store = stores.get(candidate.profile_name)
             if store is None:
                 skipped += 1
+                skips.append({"profile": candidate.profile_name, "storage_key": candidate.storage_key, "reason": "profile_unavailable"})
                 continue
             relative = candidate.storage_key.removeprefix(store.namespace + "/")
             try:
                 current = store.stat(relative)
                 if current.size_bytes != candidate.size_bytes or current.last_modified != candidate.last_modified:
                     skipped += 1
+                    skips.append({"profile": candidate.profile_name, "storage_key": candidate.storage_key, "reason": "object_changed"})
                     continue
                 if current.last_modified is None or now - current.last_modified < plan.grace_period_seconds:
                     skipped += 1
+                    skips.append({"profile": candidate.profile_name, "storage_key": candidate.storage_key, "reason": "too_recent"})
                     continue
                 if not _CAS_PATTERN.fullmatch(relative):
                     skipped += 1
+                    skips.append({"profile": candidate.profile_name, "storage_key": candidate.storage_key, "reason": "invalid_cas_key"})
                     continue
                 store.delete(relative)
                 deleted += 1
@@ -200,6 +208,7 @@ class BlobGarbageCollector:
             except StorageError as exc:
                 if isinstance(exc, ObjectNotFoundError):
                     absent += 1
+                    skips.append({"profile": candidate.profile_name, "storage_key": candidate.storage_key, "reason": "already_absent"})
                 else:
                     failed += 1
                     failures.append({
@@ -207,9 +216,12 @@ class BlobGarbageCollector:
                         "storage_key": candidate.storage_key,
                         "error": str(exc),
                     })
-        return BlobGcResult(
-            plan.plan_id, deleted, absent, skipped, failed, reclaimed, tuple(failures)
-        )
+            except Exception as exc:
+                failed += 1
+                failures.append({"profile": candidate.profile_name, "storage_key": candidate.storage_key,
+                                 "category": type(exc).__name__, "message": str(exc)})
+        return BlobGcResult(plan.plan_id, deleted, absent, skipped, failed, reclaimed,
+                            tuple(failures), tuple(skips))
 
     def _stores(
         self,
