@@ -1,5 +1,7 @@
 # Cognityx Storage
 
+[![CI](https://github.com/cognityx/cognityx-storage/actions/workflows/ci.yml/badge.svg)](https://github.com/cognityx/cognityx-storage/actions/workflows/ci.yml)
+
 `cognityx-storage` gives Cognityx services one small storage API without making
 them select filesystem paths or provider SDKs.
 
