@@ -214,7 +214,8 @@ class BlobGarbageCollector:
                     failures.append({
                         "profile": candidate.profile_name,
                         "storage_key": candidate.storage_key,
-                        "error": str(exc),
+                        "category": type(exc).__name__,
+                        "message": str(exc),
                     })
             except Exception as exc:
                 failed += 1
@@ -249,8 +250,8 @@ class BlobGarbageCollector:
         for name in names:
             try:
                 stores.append((name, self._runtime.for_profile(name, role_name=self._role_name)))
-            except StorageError:
-                warnings.append(f"profile {name}: unavailable for role {self._role_name}")
+            except StorageError as exc:
+                warnings.append(f"profile {name}: {exc}")
                 continue
         return stores, warnings
 
