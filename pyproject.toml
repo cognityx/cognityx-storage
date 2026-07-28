@@ -23,4 +23,4 @@ testpaths = ["tests"]
 addopts = "-q"
 
 [tool.uv.sources]
-cognityx-resource = { git = "https://github.com/cognityx/cognityx-resource.git" }
+cognityx-resource = { path = "../cognityx-resource" }
