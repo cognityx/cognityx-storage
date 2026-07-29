@@ -1,6 +1,6 @@
 .venv/
 dist/
+site/
 __pycache__/
 .pytest_cache/
 *.py[cod]
-
