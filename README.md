@@ -5,6 +5,19 @@
 `cognityx-storage` gives Cognityx services one small storage API without making
 them select filesystem paths or provider SDKs.
 
+```text
+Cognityx applications
+        ↓ logical role such as source_asset or artifact
+  Cognityx Storage Runtime
+        ↓ configured profile
+filesystem today, other providers when available
+```
+
+For original source files, Storage also calculates a SHA-256 fingerprint,
+stores bytes by that fingerprint, and safely reuses identical content. Storing
+content by its fingerprint is technically called content-addressed storage
+(CAS).
+
 ## Quick start
 
 ```python
@@ -77,8 +90,26 @@ remain supported. Their existing key and URI behavior is unchanged so already
 published Ingest metadata remains valid. New services should normally begin
 with `StorageRuntime`.
 
-This package does not implement authorization, replication, migration, CAS, or
-deduplication.
+This package does not implement application authorization, cross-provider
+replication, or automatic data migration. It does implement SHA-256 hashing,
+content-addressed Blob storage, configurable deduplication boundaries, physical
+Blob reuse, and reference-aware Blob garbage collection.
+
+## Deletion And Cleanup
+
+Applications first remove their logical references. Storage then plans which
+Blobs have no remaining live reference. Planning is non-destructive; execution
+rechecks references and requires explicit confirmation from the caller before
+physical deletion.
+
+## Future Roadmap
+
+A future Storage service will run this same safe cleanup process continuously
+in the background according to a retention policy. It will reuse the existing
+garbage-collection checks rather than create a second deletion mechanism. The
+current package remains an embedded runtime, so automatic scheduling is
+intentionally deferred until the long-running Storage service boundary is
+defined.
 
 ## Contributing
 
