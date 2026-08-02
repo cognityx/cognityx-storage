@@ -40,6 +40,7 @@ from cognityx_storage.local import (
 from cognityx_storage.models import StoredObject
 from cognityx_storage.runtime import (
     ResolvedRoleStore,
+    StorageLocation,
     StorageRoleResolution,
     StorageRoleResolver,
     StorageRuntime,
@@ -61,6 +62,7 @@ __all__ = [
     "ObjectNotFoundError",
     "PreparedBlob",
     "ResolvedRoleStore",
+    "StorageLocation",
     "StorageBackend",
     "StorageBackendFactory",
     "StorageCapabilities",
