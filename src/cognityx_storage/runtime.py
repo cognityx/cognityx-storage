@@ -12,6 +12,7 @@ from cognityx_storage.capabilities import StorageCapabilities
 from cognityx_storage.client import StorageClient
 from cognityx_storage.config import StorageConfig, StorageProfile, StorageRole
 from cognityx_storage.exceptions import (
+    ObjectNotFoundError,
     StorageConfigurationError,
     StorageProviderUnavailableError,
     StorageRoleNotFoundError,
@@ -49,6 +50,31 @@ class StorageRoleResolution:
             "reason": self.reason,
             "warnings": list(self.warnings),
             "capabilities": self.capabilities.to_dict(),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class StorageLocation:
+    """Canonical location and reachability details for one storage URI."""
+
+    uri: str
+    backend_name: str
+    profile_name: str
+    role_name: str | None
+    local_path: str | None
+    exists: bool
+    size_bytes: int | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "uri": self.uri,
+            "backend": self.backend_name,
+            "role": self.role_name,
+            "profile_name": self.profile_name,
+            "role_name": self.role_name,
+            "local_path": self.local_path,
+            "exists": self.exists,
+            "size_bytes": self.size_bytes,
         }
 
 
@@ -312,10 +338,7 @@ class StorageRuntime:
     def for_role(self, role_name: str) -> ResolvedRoleStore:
         resolution = self._resolver.resolve(role_name)
         profile = resolution.resolved_profile
-        backend = self._backends.get(profile.name)
-        if backend is None:
-            backend = self._factory.build(profile)
-            self._backends[profile.name] = backend
+        backend = self._backend_for_profile(profile.name)
         return ResolvedRoleStore(resolution, backend)
 
     def for_profile(
@@ -328,10 +351,6 @@ class StorageRuntime:
             raise StorageRoleNotFoundError(
                 f"Storage profile or role is not configured: {profile_name}/{role_name}"
             )
-        if not self._factory.is_available(profile.type):
-            raise StorageProviderUnavailableError(
-                f"Storage profile '{profile_name}' provider is unavailable."
-            )
         resolution = StorageRoleResolution(
             role=role,
             requested_profile=profile_name,
@@ -341,11 +360,37 @@ class StorageRuntime:
             warnings=(),
             capabilities=self._factory.capabilities(profile.type),
         )
-        backend = self._backends.get(profile.name)
-        if backend is None:
-            backend = self._factory.build(profile)
-            self._backends[profile.name] = backend
+        backend = self._backend_for_profile(profile.name)
         return ResolvedRoleStore(resolution, backend)
+
+    def locate(self, uri: str) -> StorageLocation:
+        """Resolve one storage URI to provider and file-level metadata."""
+        profile_name, storage_key = self._parse_storage_uri(uri)
+        backend = self._backend_for_profile(profile_name)
+        client = StorageClient(backend)
+
+        exists = client.exists(storage_key)
+        local_path: str | None = None
+        size_bytes: int | None = None
+        if exists:
+            existing = client.resolve_local_path(storage_key)
+            if existing is not None:
+                local_path = str(existing)
+            try:
+                size_bytes = client.stat(storage_key).size_bytes
+            except ObjectNotFoundError:
+                exists = False
+                local_path = None
+
+        return StorageLocation(
+            uri=f"storage://{profile_name}/{storage_key}",
+            backend_name=client.backend_name,
+            profile_name=profile_name,
+            role_name=self._infer_role_from_key(storage_key),
+            local_path=local_path,
+            exists=exists,
+            size_bytes=size_bytes,
+        )
 
     def blobs(self, role_name: str) -> BlobStore:
         """Return immutable Blob/CAS operations bound to a configured role."""
@@ -410,3 +455,50 @@ class StorageRuntime:
             backend = self._factory.build(profile)
             self._backends[profile.name] = backend
         return StorageClient(backend)
+
+    def _backend_for_profile(self, profile_name: str) -> StorageBackend:
+        profile = self.config.profiles.get(profile_name)
+        if profile is None:
+            raise StorageRoleNotFoundError(
+                f"Storage profile is not configured: {profile_name}"
+            )
+        if not self._factory.is_available(profile.type):
+            raise StorageProviderUnavailableError(
+                f"Storage profile '{profile.name}' provider is unavailable."
+            )
+        backend = self._backends.get(profile.name)
+        if backend is None:
+            backend = self._factory.build(profile)
+            self._backends[profile.name] = backend
+        return backend
+
+    @staticmethod
+    def _parse_storage_uri(uri: str) -> tuple[str, str]:
+        if not isinstance(uri, str):
+            raise ValueError("Storage URI must be a string.")
+        prefix = "storage://"
+        if not uri.startswith(prefix):
+            raise ValueError("Storage URI must use storage://<profile>/<logical-key>.")
+        remainder = uri[len(prefix) :]
+        if "/" not in remainder:
+            raise ValueError(
+                "Storage URI must include one profile segment and one logical key segment."
+            )
+        profile_name, storage_key = remainder.split("/", 1)
+        if not profile_name or "." in profile_name or "/" in profile_name:
+            raise ValueError("Storage URI profile segment is invalid.")
+        if not storage_key:
+            raise ValueError("Storage URI key segment is invalid.")
+        validate_storage_key(storage_key)
+        return profile_name, storage_key
+
+    def _infer_role_from_key(self, storage_key: str) -> str | None:
+        selected = None
+        selected_namespace = ""
+        for name, role in self.config.roles.items():
+            namespace = role.namespace
+            if storage_key == namespace or storage_key.startswith(f"{namespace}/"):
+                if len(namespace) > len(selected_namespace):
+                    selected = name
+                    selected_namespace = namespace
+        return selected
